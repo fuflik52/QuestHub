@@ -145,6 +145,27 @@
 
       <div id="xp-toast" class="xp-toast" aria-live="polite"></div>
     </section>
+
+    <!-- Профиль -->
+    <section id="view-profile" class="view">
+      <div class="game-topbar">
+        <button id="profile-back" class="icon-btn" title="Назад">
+          <svg><use href="#icon-arrow-left"/></svg>
+        </button>
+        <div class="game-title">
+          <svg class="title-icon" aria-hidden="true"><use href="#icon-star"/></svg>
+          <h2>Профиль</h2>
+        </div>
+        <div style="width:38px"></div>
+      </div>
+      <div class="profile-layout">
+        <nav class="profile-nav">
+          <button id="pf-tab-games" class="nav-btn active"><svg><use href="#icon-gamepad"/></svg><span>Игры</span></button>
+          <button id="pf-tab-settings" class="nav-btn"><svg><use href="#icon-star"/></svg><span>Основное</span></button>
+        </nav>
+        <div id="profile-root" class="profile-root"></div>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">

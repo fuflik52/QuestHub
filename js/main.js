@@ -8,6 +8,7 @@ const dom = {
   views: {
     home: document.getElementById('view-home'),
     game: document.getElementById('view-game'),
+    profile: document.getElementById('view-profile'),
   },
   gameRoot: document.getElementById('game-root'),
   xp: {
@@ -43,6 +44,32 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x + w, y + h, x, y + h, rr);
   ctx.arcTo(x, y + h, x, y, rr);
   ctx.arcTo(x, y, x + w, y, rr);
+}
+
+// Shared SVG flask icon (colored via fillStyle)
+const FLASK_SVG_PATH = "M5 19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1c0-.21-.07-.41-.18-.57L13 8.35V4h-2v4.35L5.18 18.43c-.11.16-.18.36-.18.57m1 3a3 3 0 0 1-3-3c0-.6.18-1.16.5-1.63L9 7.81V6a1 1 0 0 1-1-1V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1v1.81l5.5 9.56c.32.47.5 1.03.5 1.63a3 3 0 0 1-3 3zm7-6l1.34-1.34L16.27 18H7.73l2.66-4.61zm-.5-4a.5.5 0 0 1 .5.5a.5.5 0 0 1-.5.5a.5.5 0 0 1-.5-.5a.5.5 0 0 1 .5-.5";
+let FLASK_PATH2D = null;
+try { FLASK_PATH2D = new Path2D(FLASK_SVG_PATH); } catch { FLASK_PATH2D = null; }
+
+function drawFlaskIcon(ctx, x, y, w, h, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  const sx = w / 24;
+  const sy = h / 24;
+  ctx.scale(sx, sy);
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.globalAlpha = 0.98;
+  if (FLASK_PATH2D) {
+    ctx.fill(FLASK_PATH2D);
+  } else {
+    // Fallback: simple rounded rect
+    ctx.beginPath();
+    ctx.rect(0, 0, 24, 24);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 // EXP System
@@ -107,6 +134,131 @@ const XP = (() => {
   return { add, getTotal, levelFromXP };
 })();
 
+// ============================
+// Profile: last plays storage and modal
+// ============================
+const PROFILE_STORE_KEY = 'questhub:profile:last:v1';
+const Profile = (() => {
+  function getPlays() {
+    return StorageSafe.get(PROFILE_STORE_KEY, []);
+  }
+  function addPlay(snap) {
+    try {
+      const arr = getPlays();
+      arr.unshift({ ...snap, ts: Date.now() });
+      const trimmed = arr.slice(0, 6);
+      StorageSafe.set(PROFILE_STORE_KEY, trimmed);
+    } catch {}
+  }
+  function openModal() {
+    const plays = getPlays();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const wrap = document.createElement('div');
+    wrap.className = 'status-card';
+    wrap.innerHTML = `
+      <h3>Профиль</h3>
+      <p>Последние игры и места смерти</p>
+      <div id="pf-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:12px; margin-top:8px"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end">
+        <button class="btn" id="pf-close">Закрыть</button>
+      </div>
+    `;
+    overlay.appendChild(wrap);
+    function drawSnap(canvas, snap) {
+      const ctx = canvas.getContext('2d');
+      const cols = snap.cols || 32;
+      const rows = snap.rows || 24;
+      const pad = 8;
+      const cw = canvas.width = 220;
+      const ch = canvas.height = 160;
+      const cellW = (cw - pad * 2) / cols;
+      const cellH = (ch - pad * 2) / rows;
+      ctx.clearRect(0,0,cw,ch);
+      // bg
+      ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(0,0,cw,ch);
+      // grid faint
+      ctx.save(); ctx.globalAlpha = 0.08; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+      for (let x = 0; x <= cols; x++){ ctx.beginPath(); ctx.moveTo(pad + x*cellW + 0.5, pad); ctx.lineTo(pad + x*cellW + 0.5, ch - pad); ctx.stroke(); }
+      for (let y = 0; y <= rows; y++){ ctx.beginPath(); ctx.moveTo(pad, pad + y*cellH + 0.5); ctx.lineTo(cw - pad, pad + y*cellH + 0.5); ctx.stroke(); }
+      ctx.restore();
+      // path
+      const color = snap.gameId === 'mouseSnake' ? '#22d3ee' : '#a78bfa';
+      const pts = snap.path || [];
+      if (pts.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i=0; i<pts.length; i++){
+          const p = pts[i];
+          const x = pad + p.x * cellW + cellW/2;
+          const y = pad + p.y * cellH + cellH/2;
+          if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke(); ctx.restore();
+      }
+      // death marker
+      if (snap.death && (!snap.win)) {
+        const cx = pad + snap.death.x * cellW + cellW/2;
+        const cy = pad + snap.death.y * cellH + cellH/2;
+        ctx.save(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3;
+        const r = Math.min(cellW, cellH) * 0.5;
+        ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - r, cy + r); ctx.lineTo(cx + r, cy - r); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    const list = wrap.querySelector('#pf-list');
+    if (!plays.length) {
+      const empty = document.createElement('div');
+      empty.textContent = 'Пока нет данных. Сыграй пару игр!';
+      empty.style.color = 'var(--muted)';
+      list.appendChild(empty);
+    } else {
+      for (const p of plays) {
+        const item = document.createElement('div');
+        item.style.background = 'var(--card)';
+        item.style.border = '1px solid rgba(255,255,255,0.08)';
+        item.style.borderRadius = '10px';
+        item.style.padding = '8px';
+        item.innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px">
+          <strong style="font-size:12px">${p.gameId === 'mouseSnake' ? 'Змейка' : p.gameId === 'hideFromCat' ? 'Прятки' : p.gameId}</strong>
+          <span style="font-size:11px; color:var(--muted)">${new Date(p.ts||Date.now()).toLocaleTimeString()}</span>
+        </div>`;
+        const canv = document.createElement('canvas');
+        item.appendChild(canv);
+        list.appendChild(item);
+        drawSnap(canv, p);
+      }
+    }
+    function close(){ document.body.removeChild(overlay); document.removeEventListener('keydown', onKey); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+    wrap.querySelector('#pf-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  }
+  return { addPlay, openModal };
+})();
+
+// ============================
+// Settings: persisted app/game options
+// ============================
+const SETTINGS_STORE_KEY = 'questhub:settings:v1';
+const Settings = (() => {
+  const defaults = {
+    showElixirHud: true,
+    defaultSnakeMode: 'classic', // 'classic' | 'wrap' | 'turbo'
+    defaultHideCatMode: 'normal', // 'normal' | 'hard'
+    musicVolume: 0.07,
+  };
+  function get() { const v = StorageSafe.get(SETTINGS_STORE_KEY, defaults); return { ...defaults, ...v }; }
+  function setPartial(p) { const cur = get(); const next = { ...cur, ...p }; StorageSafe.set(SETTINGS_STORE_KEY, next); return next; }
+  // apply runtime settings
+  (function apply(){ try { Music.setVolume(get().musicVolume); } catch {} })();
+  return { get, setPartial };
+})();
+
 // Simple router/view switch
 function showView(name) {
   for (const key of Object.keys(dom.views)) {
@@ -114,6 +266,8 @@ function showView(name) {
   }
   // Toggle minimal chrome while playing
   document.body.classList.toggle('playing', name === 'game');
+  // Hide pause/resume buttons on non-game views
+  if (name !== 'game') { try { togglePauseButtons(false); } catch {} }
 }
 
 function setGameTitle(iconSymbolId, title) {
@@ -164,6 +318,12 @@ function backToHome() {
   if (currentGame) { try { currentGame.unmount(); } catch {} currentGame = null; }
   showView('home');
   try { Music.stop(); } catch {}
+}
+function showProfile() {
+  if (currentGame) { try { currentGame.unmount(); } catch {} currentGame = null; }
+  setGameTitle('icon-star', 'Профиль');
+  showView('profile');
+  renderProfile();
 }
 
 function togglePauseButtons(paused) {
@@ -313,6 +473,88 @@ const Music = (() => {
 // Prime/resume audio on first user interaction
 window.addEventListener('pointerdown', () => { try { Sound.resume(); } catch {} }, { once: true, passive: true });
 
+// Open profile on XP box click
+document.addEventListener('DOMContentLoaded', () => {
+  const xpBox = document.querySelector('.xp-box');
+  if (xpBox) xpBox.addEventListener('click', () => { showProfile(); });
+  const backBtn = document.getElementById('profile-back');
+  if (backBtn) backBtn.addEventListener('click', backToHome);
+});
+
+function renderProfile() {
+  const root = document.getElementById('profile-root');
+  if (!root) return;
+  root.innerHTML = '';
+  const btnGames = document.getElementById('pf-tab-games');
+  const btnSettings = document.getElementById('pf-tab-settings');
+  function renderGames(){
+    root.innerHTML = '';
+    const plays = StorageSafe.get(PROFILE_STORE_KEY, []);
+    if (!plays.length) { const p = document.createElement('p'); p.textContent = 'Пока нет данных. Сыграй пару игр!'; p.style.color = 'var(--muted)'; root.appendChild(p); return; }
+    for (const snap of plays) {
+      const card = document.createElement('div');
+      card.className = 'status-card';
+      const title = document.createElement('div');
+      title.style.display = 'flex'; title.style.alignItems = 'center'; title.style.justifyContent = 'space-between';
+      title.innerHTML = `<strong style="font-size:12px">${snap.gameId === 'mouseSnake' ? 'Змейка' : snap.gameId === 'hideFromCat' ? 'Прятки' : snap.gameId}</strong><span style="font-size:11px; color:var(--muted)">${new Date(snap.ts||Date.now()).toLocaleString()}</span>`;
+      const canv = document.createElement('canvas'); canv.width = 360; canv.height = 240; canv.style.width = '100%'; canv.style.height = 'auto';
+      card.append(title, canv);
+      root.appendChild(card);
+      const ctx = canv.getContext('2d');
+      const cols = snap.cols || 32; const rows = snap.rows || 24; const pad = 10;
+      const cw = canv.width, ch = canv.height; const cellW = (cw - pad*2)/cols, cellH = (ch - pad*2)/rows;
+      ctx.clearRect(0,0,cw,ch);
+      ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(0,0,cw,ch);
+      ctx.save(); ctx.globalAlpha = 0.08; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+      for (let x=0; x<=cols; x++){ ctx.beginPath(); ctx.moveTo(pad + x*cellW + 0.5, pad); ctx.lineTo(pad + x*cellW + 0.5, ch-pad); ctx.stroke(); }
+      for (let y=0; y<=rows; y++){ ctx.beginPath(); ctx.moveTo(pad, pad + y*cellH + 0.5); ctx.lineTo(cw-pad, pad + y*cellH + 0.5); ctx.stroke(); }
+      ctx.restore();
+      const color = snap.gameId === 'mouseSnake' ? '#22d3ee' : '#a78bfa';
+      const pts = snap.path || [];
+      if (pts.length > 1) { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        for (let i=0;i<pts.length;i++){ const p = pts[i]; const x = pad + p.x*cellW + cellW/2; const y = pad + p.y*cellH + cellH/2; if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+        ctx.stroke(); ctx.restore(); }
+      if (snap.death && !snap.win){ const cx = pad + snap.death.x*cellW + cellW/2, cy = pad + snap.death.y*cellH + cellH/2; ctx.save(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3; const r = Math.min(cellW,cellH)*0.5; ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx-r,cy+r); ctx.lineTo(cx+r,cy-r); ctx.stroke(); ctx.restore(); }
+    }
+  }
+  function renderSettings(){
+    root.innerHTML = '';
+    const s = Settings.get();
+    const card = document.createElement('div'); card.className = 'status-card';
+    card.innerHTML = `
+      <h3 style="display:flex; align-items:center; gap:8px"><svg style="width:16px; height:16px"><use href="#icon-star"/></svg> Основное</h3>
+      <label style="display:flex; align-items:center; gap:10px"><input id="st-elixir" type="checkbox" ${s.showElixirHud ? 'checked' : ''}/> Показать панель эликсиров</label>
+      <label style="display:flex; align-items:center; gap:10px">Громкость музыки <input id="st-vol" type="range" min="0" max="0.3" step="0.01" value="${s.musicVolume}"/></label>
+      <label style="display:flex; align-items:center; gap:10px">Режим Змейки <select id="st-snake">
+        <option value="classic" ${s.defaultSnakeMode==='classic'?'selected':''}>Классика</option>
+        <option value="wrap" ${s.defaultSnakeMode==='wrap'?'selected':''}>Без стен</option>
+        <option value="turbo" ${s.defaultSnakeMode==='turbo'?'selected':''}>Турбо</option>
+      </select></label>
+      <label style="display:flex; align-items:center; gap:10px">Прятки — сложность <select id="st-hide">
+        <option value="normal" ${s.defaultHideCatMode==='normal'?'selected':''}>Обычная</option>
+        <option value="hard" ${s.defaultHideCatMode==='hard'?'selected':''}>Сложная</option>
+      </select></label>
+      <div style="display:flex; gap:10px; justify-content:flex-end"><button class="btn primary" id="st-save"><svg><use href="#icon-play"/></svg> Сохранить</button></div>
+    `;
+    root.appendChild(card);
+    card.querySelector('#st-save').addEventListener('click', () => {
+      const next = Settings.setPartial({
+        showElixirHud: card.querySelector('#st-elixir').checked,
+        musicVolume: parseFloat(card.querySelector('#st-vol').value),
+        defaultSnakeMode: card.querySelector('#st-snake').value,
+        defaultHideCatMode: card.querySelector('#st-hide').value,
+      });
+      try { Music.setVolume(next.musicVolume); } catch {}
+      XP.add(0, 'Настройки сохранены');
+    });
+  }
+  btnGames?.addEventListener('click', () => { btnGames.classList.add('primary'); btnSettings?.classList.remove('primary'); renderGames(); });
+  btnSettings?.addEventListener('click', () => { btnSettings.classList.add('primary'); btnGames?.classList.remove('primary'); renderSettings(); });
+  // default tab -> Игры
+  btnGames?.classList.add('primary'); btnSettings?.classList.remove('primary');
+  renderGames();
+}
+
 // ============================
 // FPS Meter (shared)
 // ============================
@@ -368,6 +610,11 @@ function MouseSnakeGame(root) {
   wrap.appendChild(canvas);
   root.append(hud, wrap);
 
+  // Elixir HUD (right side timers for potions/effects)
+  const elixirHud = document.createElement('div');
+  elixirHud.className = 'elixir-hud';
+  wrap.appendChild(elixirHud);
+
   // Pre-render static grid to offscreen canvas for performance
   const gridCanvas = document.createElement('canvas');
   gridCanvas.width = canvas.width;
@@ -383,6 +630,7 @@ function MouseSnakeGame(root) {
       <h3 id="sn-status-title">Пауза</h3>
       <p id="sn-status-sub">Возвращайся к охоте за сыром!</p>
       <div style="display:flex; gap:10px; margin-top:6px">
+        <button class="btn" id="sn-resume"><svg><use href="#icon-play"/></svg> Продолжить</button>
         <button class="btn primary" id="sn-restart"><svg><use href="#icon-play"/></svg> Заново</button>
         <button class="btn" id="sn-home"><svg><use href="#icon-arrow-left"/></svg> В меню</button>
       </div>
@@ -533,6 +781,13 @@ function MouseSnakeGame(root) {
     showOverlay('Игра окончена', `Собрано сыра: ${score}. Награда: +${gained} EXP`);
     XP.add(gained, 'Мышь и Сыр');
     Sound.lose();
+    try {
+      Profile.addPlay({
+        gameId: 'mouseSnake', cols, rows, win: false,
+        path: snake.slice(0, Math.min(50, snake.length)),
+        death: { x: snake[0].x, y: snake[0].y }
+      });
+    } catch {}
   }
 
   function step() {
@@ -591,21 +846,25 @@ function MouseSnakeGame(root) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(gridCanvas, 0, 0);
 
+    // ambient glow for active speed boost (blue)
+    if (speedBoostTimer > 0) {
+      ctx.save();
+      ctx.shadowColor = '#3b82f6';
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+
     // potions
     for (const p of potions) {
       const cx = p.x * cellW;
       const cy = p.y * cellH;
-      const pad = 6;
+      const pad = 4;
       const w = cellW - pad * 2, h = cellH - pad * 2;
       const color = p.type === 'green' ? '#22c55e' : '#3b82f6';
-      ctx.save();
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 16;
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.95;
-      roundRect(ctx, cx + pad, cy + pad, w, h, 8);
-      ctx.fill();
-      ctx.restore();
+      drawFlaskIcon(ctx, cx + pad, cy + pad, w, h, color);
     }
 
     // cheese
@@ -690,10 +949,12 @@ function MouseSnakeGame(root) {
     ctx.arcTo(x, y, x + w, y, rr);
   }
 
-  function showOverlay(title, sub) {
+  function showOverlay(title, sub, kind) {
     overlay.style.display = 'flex';
     overlay.querySelector('#sn-status-title').textContent = title;
     overlay.querySelector('#sn-status-sub').textContent = sub || '';
+    const rb = overlay.querySelector('#sn-resume');
+    if (rb) rb.style.display = (kind === 'win') ? 'none' : '';
   }
   function hideOverlay() { overlay.style.display = 'none'; }
 
@@ -706,8 +967,72 @@ function MouseSnakeGame(root) {
     if (!paused) {
       const dt = (ts - lastTime) / 1000;
       lastTime = ts;
+      // timers: potions and boosts
+      potionSpawnTimer -= dt;
+      if (potionSpawnTimer <= 0) {
+        // limit on-screen potions
+        if (potions.length < 2) {
+          // find free cell
+          const occupied = new Set(snake.map(s => s.x + ',' + s.y));
+          if (cheese) occupied.add(cheese.x + ',' + cheese.y);
+          for (const p of potions) occupied.add(p.x + ',' + p.y);
+          let tries = 64;
+          let px = -1, py = -1;
+          while (tries--) {
+            const tx = randInt(0, cols - 1);
+            const ty = randInt(0, rows - 1);
+            if (!occupied.has(tx + ',' + ty)) { px = tx; py = ty; break; }
+          }
+          if (px >= 0) {
+            const type = Math.random() < 0.5 ? 'green' : 'blue';
+            potions.push({ x: px, y: py, type, ttl: randInt(6, 9) });
+          }
+        }
+        potionSpawnTimer = randInt(5, 9);
+      }
+      // decay potion TTLs
+      if (potions.length) {
+        for (let i = potions.length - 1; i >= 0; i--) {
+          potions[i].ttl -= dt;
+          if (potions[i].ttl <= 0) potions.splice(i, 1);
+        }
+      }
+      // decay speed boost
+      if (speedBoostTimer > 0) speedBoostTimer = Math.max(0, speedBoostTimer - dt);
+      // update elixir HUD
+      elixirHud.innerHTML = '';
+      // show the longest-living potion (nearest expire) on HUD
+      const active = potions.slice().sort((a,b)=>a.ttl - b.ttl)[0];
+      if (active) {
+        const item = document.createElement('div'); item.className = 'elixir'; item.setAttribute('data-tip', active.type === 'green' ? 'Зелёное зелье: +1 длина' : 'Синее зелье: ускорение на время');
+        const icon = document.createElement('canvas'); icon.width = 24; icon.height = 24; icon.className = 'icon';
+        const ict = icon.getContext('2d');
+        drawFlaskIcon(ict, 0, 0, 24, 24, active.type === 'green' ? '#22c55e' : '#3b82f6');
+        const bar = document.createElement('div'); bar.className = 'bar';
+        const fill = document.createElement('span');
+        const ttl = Math.max(0, active.ttl);
+        const pct = Math.max(0, Math.min(1, ttl / 9));
+        fill.style.transform = `scaleY(${pct})`;
+        bar.appendChild(fill);
+        const label = document.createElement('div'); label.className = 'label'; label.textContent = (active.type === 'green' ? 'Зелье роста' : 'Скорость') + ' ' + ttl.toFixed(1) + 'с';
+        item.append(icon, bar, label);
+        elixirHud.appendChild(item);
+      } else if (speedBoostTimer > 0) {
+        const item = document.createElement('div'); item.className = 'elixir'; item.setAttribute('data-tip', 'Скорость: активный буст');
+        const icon = document.createElement('canvas'); icon.width = 24; icon.height = 24; icon.className = 'icon';
+        const ict = icon.getContext('2d'); drawFlaskIcon(ict, 0, 0, 24, 24, '#3b82f6');
+        const bar = document.createElement('div'); bar.className = 'bar';
+        const fill = document.createElement('span');
+        const pct = Math.max(0, Math.min(1, speedBoostTimer / 5));
+        fill.style.transform = `scaleY(${pct})`;
+        bar.appendChild(fill);
+        const label = document.createElement('div'); label.className = 'label'; label.textContent = 'Скорость ' + speedBoostTimer.toFixed(1) + 'с';
+        item.append(icon, bar, label);
+        elixirHud.appendChild(item);
+      }
       acc += dt;
-      const stepDur = 1 / speed;
+      const effSpeed = speed + (speedBoostTimer > 0 ? SPEED_BOOST_AMOUNT : 0);
+      const stepDur = 1 / effSpeed;
       while (acc >= stepDur) { acc -= stepDur; step(); }
       draw();
       const f = fpsMeter.tick(ts);
@@ -722,6 +1047,7 @@ function MouseSnakeGame(root) {
   // Controls
   const restartBtn = overlay.querySelector('#sn-restart');
   const homeBtn = overlay.querySelector('#sn-home');
+  const resumeBtn = overlay.querySelector('#sn-resume');
   const modeSel = hud.querySelector('#sn-mode');
   modeSel.addEventListener('change', () => {
     mode = modeSel.value;
@@ -738,6 +1064,7 @@ function MouseSnakeGame(root) {
     rafId = requestAnimationFrame(loop);
   });
   homeBtn.addEventListener('click', () => { backToHome(); });
+  resumeBtn.addEventListener('click', () => { paused = false; hideOverlay(); togglePauseButtons(false); });
 
   window.addEventListener('keydown', keyHandler);
   window.addEventListener('resize', onResize);
@@ -977,6 +1304,11 @@ function HideFromCatGame(root) {
   wrap.appendChild(canvas);
   root.append(hud, wrap);
 
+  // Elixir HUD for HideFromCat
+  const elixirHud = document.createElement('div');
+  elixirHud.className = 'elixir-hud';
+  wrap.appendChild(elixirHud);
+
   // Pre-render static grid background + red border (declared after cols/rows)
 
   // Overlay
@@ -987,6 +1319,7 @@ function HideFromCatGame(root) {
       <h3 id="hc-status-title">Пауза</h3>
       <p id="hc-status-sub"></p>
       <div style="display:flex; gap:10px; margin-top:6px">
+        <button class="btn" id="hc-resume"><svg><use href="#icon-play"/></svg> Продолжить</button>
         <button class="btn primary" id="hc-restart"><svg><use href="#icon-play"/></svg> Заново</button>
         <button class="btn" id="hc-home"><svg><use href="#icon-arrow-left"/></svg> В меню</button>
       </div>
@@ -1058,6 +1391,12 @@ function HideFromCatGame(root) {
   let lastTs = performance.now();
   const fpsMeter = createFpsMeter();
   let rafId = 0;
+  // Potions state for HideFromCat
+  let hcPotions = []; // { x, y, type: 'green'|'blue', ttl }
+  let hcPotionSpawnTimer = randInt(5, 9);
+  let hcSpeedBoostTimer = 0; // seconds
+  let hcGreenGlowTimer = 0; // brief visual after green pickup
+  const HC_SPEED_BOOST = 0.04; // reduces player move duration by ~40ms
   // Visual: Cat image (SVG photo-style)
   const catImg = new Image();
   (function loadCatImage(){
@@ -1146,7 +1485,9 @@ function HideFromCatGame(root) {
     if (anim.active) return false;
     const nx = ent.x + dx, ny = ent.y + dy;
     if (!passable(nx, ny)) return false;
-    startAnim(ent, anim, nx, ny, durSec);
+    let d = durSec;
+    if (ent === player && hcSpeedBoostTimer > 0) d = Math.max(0.06, durSec - HC_SPEED_BOOST);
+    startAnim(ent, anim, nx, ny, d);
     return true;
   }
 
@@ -1280,6 +1621,24 @@ function HideFromCatGame(root) {
       try { Music.stop(); } catch {}
       showOverlay('Пойман!', 'Кот тебя нашёл. +10 EXP за попытку', 'lose');
       XP.add(10, 'Прятки от Кота — попытка');
+      try { Profile.addPlay({ gameId: 'hideFromCat', cols, rows, win: false, path: [], death: { x: player.x, y: player.y } }); } catch {}
+    }
+
+    // pickup potion if on same cell
+    for (let i = 0; i < hcPotions.length; i++) {
+      const p = hcPotions[i];
+      if (p.x === player.x && p.y === player.y) {
+        if (p.type === 'green') {
+          timeLeft = Math.min(60, timeLeft + 3);
+          hcGreenGlowTimer = 0.7;
+          Sound.click();
+        } else if (p.type === 'blue') {
+          hcSpeedBoostTimer = Math.max(hcSpeedBoostTimer, 5);
+          Sound.click();
+        }
+        hcPotions.splice(i, 1);
+        break;
+      }
     }
 
     // timer
@@ -1290,13 +1649,56 @@ function HideFromCatGame(root) {
       try { Music.stop(); } catch {}
       showOverlay('Выжил!', `Поздравляем! Награда: +${gained} EXP`, 'win');
       XP.add(gained, 'Прятки от Кота — победа');
+      try { Profile.addPlay({ gameId: 'hideFromCat', cols, rows, win: true, path: [] }); } catch {}
     }
+
+    // Potions spawn and timers
+    hcPotionSpawnTimer -= dt;
+    if (hcPotionSpawnTimer <= 0) {
+      if (hcPotions.length < 2) {
+        let tries = 100;
+        while (tries--) {
+          const rx = randInt(0, cols - 1);
+          const ry = randInt(0, rows - 1);
+          if (grid[ry][rx] === 0 && !(rx === player.x && ry === player.y) && !(rx === cat.x && ry === cat.y)) {
+            hcPotions.push({ x: rx, y: ry, type: Math.random() < 0.5 ? 'green' : 'blue', ttl: randInt(6, 9) });
+            break;
+          }
+        }
+      }
+      hcPotionSpawnTimer = randInt(5, 9);
+    }
+    for (let i = hcPotions.length - 1; i >= 0; i--) {
+      hcPotions[i].ttl -= dt;
+      if (hcPotions[i].ttl <= 0) hcPotions.splice(i, 1);
+    }
+    if (hcSpeedBoostTimer > 0) hcSpeedBoostTimer = Math.max(0, hcSpeedBoostTimer - dt);
+    if (hcGreenGlowTimer > 0) hcGreenGlowTimer = Math.max(0, hcGreenGlowTimer - dt);
   }
 
   function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     // background grid-like
     ctx.drawImage(gridCache, 0, 0);
+    // ambient glows
+    if (hcGreenGlowTimer > 0) {
+      ctx.save();
+      ctx.shadowColor = '#22c55e';
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = 0.10 * (hcGreenGlowTimer / 0.7);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+    if (hcSpeedBoostTimer > 0) {
+      ctx.save();
+      ctx.shadowColor = '#3b82f6';
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
     // walls
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) if (grid[y][x] === 1) {
@@ -1307,6 +1709,15 @@ function HideFromCatGame(root) {
         roundRect(ctx, px, py, w, h, 6);
         ctx.fill();
       }
+    }
+    // potions
+    for (const p of hcPotions) {
+      const px = p.x * cellW;
+      const py = p.y * cellH;
+      const pad = 4;
+      const w = cellW - pad * 2, h = cellH - pad * 2;
+      const color = p.type === 'green' ? '#22c55e' : '#3b82f6';
+      drawFlaskIcon(ctx, px + pad, py + pad, w, h, color);
     }
     // Interpolated positions
     const pt = playerAnim.active ? Math.min(1, playerAnim.t / playerAnim.dur) : 1;
@@ -1336,6 +1747,23 @@ function HideFromCatGame(root) {
     hud.querySelector('#hc-time').textContent = Math.max(0, timeLeft).toFixed(1);
     const f = fpsMeter.tick(performance.now());
     hud.querySelector('#hc-fps').textContent = String(f);
+
+    // Update Elixir HUD (show active timers)
+    elixirHud.innerHTML = '';
+    const timers = [];
+    if (hcSpeedBoostTimer > 0) timers.push({ type:'blue', ttl: hcSpeedBoostTimer });
+    for (const p of hcPotions) timers.push({ type: p.type, ttl: p.ttl });
+    timers.sort((a,b)=>a.ttl - b.ttl);
+    for (const t of timers.slice(0,2)) {
+      const item = document.createElement('div'); item.className = 'elixir'; item.setAttribute('data-tip', t.type === 'green' ? 'Зелёное зелье: +время' : 'Скорость: активный буст');
+      const icon = document.createElement('canvas'); icon.width = 24; icon.height = 24; icon.className = 'icon';
+      const ict = icon.getContext('2d'); drawFlaskIcon(ict, 0, 0, 24, 24, t.type === 'green' ? '#22c55e' : '#3b82f6');
+      const bar = document.createElement('div'); bar.className = 'bar'; const fill = document.createElement('span');
+      const base = t.type === 'blue' ? 5 : 9; const pct = Math.max(0, Math.min(1, t.ttl / base));
+      fill.style.transform = `scaleY(${pct})`; bar.appendChild(fill);
+      const label = document.createElement('div'); label.className = 'label'; label.textContent = (t.type === 'green' ? 'Зелье' : 'Скорость') + ' ' + t.ttl.toFixed(1) + 'с';
+      item.append(icon, bar, label); elixirHud.appendChild(item);
+    }
   }
 
   // helpers
@@ -1378,6 +1806,7 @@ function HideFromCatGame(root) {
 
   const restartBtn = overlay.querySelector('#hc-restart');
   const homeBtn = overlay.querySelector('#hc-home');
+  const resumeBtn = overlay.querySelector('#hc-resume');
   restartBtn.addEventListener('click', () => {
     hideOverlay();
     // Full remount for гарантированный чистый старт
@@ -1387,6 +1816,7 @@ function HideFromCatGame(root) {
     setTimeout(() => startGame('hideFromCat'), 0);
   });
   homeBtn.addEventListener('click', () => { backToHome(); });
+  resumeBtn.addEventListener('click', () => { paused = false; hideOverlay(); togglePauseButtons(false); lastTs = performance.now(); });
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
