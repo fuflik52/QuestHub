@@ -1,0 +1,167 @@
+/* QuestHub Styles - modern glass UI */
+:root{
+  --bg: #0b1020;
+  --bg-grad-1: #0b1020;
+  --bg-grad-2: #111b33;
+  --card: rgba(255,255,255,0.06);
+  --glass: rgba(255,255,255,0.08);
+  --text: #e5e7eb;
+  --muted: #a1a1aa;
+  --brand-1: #22d3ee; /* cyan */
+  --brand-2: #a78bfa; /* violet */
+  --accent: #f59e0b; /* amber */
+  --danger: #ef4444;
+  --success: #22c55e;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  color:var(--text);
+  background: radial-gradient(1200px 800px at 20% -10%, rgba(34,211,238,0.15), transparent 60%),
+              radial-gradient(1000px 700px at 120% 10%, rgba(167,139,250,0.15), transparent 60%),
+              linear-gradient(180deg, var(--bg-grad-1), var(--bg-grad-2));
+  background-attachment: fixed;
+}
+
+img,svg{display:block}
+button{font:inherit}
+
+.site-header{
+  position: sticky; top:0; z-index: 20;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; padding:14px 20px; 
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.glass{box-shadow: var(--shadow)}
+
+.brand{display:flex; align-items:center; gap:12px}
+.brand .logo{width:30px; height:30px; color: var(--accent)}
+.brand-text{display:flex; flex-direction:column; line-height:1}
+.brand-text strong{font-weight:800; letter-spacing:0.2px}
+.brand-text span{font-size:12px; color:var(--muted)}
+
+.xp-box{display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:12px; background:var(--card); border:1px solid rgba(255,255,255,0.06)}
+.xp-icon{width:22px; height:22px; color:#fbbf24}
+.xp-stats{display:flex; flex-direction:column; gap:2px}
+.xp-line{font-weight:700}
+.level-line{font-size:12px; color:var(--muted)}
+.xp-progress{width:160px; height:6px; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden}
+.xp-progress span{display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--brand-1), var(--brand-2)); transition:width .3s ease}
+
+main{padding:24px 20px; max-width:1100px; margin:0 auto}
+.hero{margin:16px 4px 24px}
+.hero h1{margin:0 0 6px; font-weight:800; letter-spacing:0.3px}
+.hero p{margin:0; color:var(--muted)}
+
+.cards{display:grid; grid-template-columns: repeat(12, 1fr); gap:18px}
+.card{grid-column: span 6; display:flex; background:var(--card); border:1px solid rgba(255,255,255,0.08); border-radius:16px; overflow:hidden; box-shadow:var(--shadow)}
+.card.disabled{opacity:.7}
+.card-media{background:linear-gradient(135deg, rgba(34,211,238,.12), rgba(167,139,250,.12)); display:flex; align-items:center; justify-content:center; min-width:180px}
+.card-illustration{width:160px; height:80px; color:#fff; opacity:0.9}
+.card-body{padding:18px 18px 16px; display:flex; flex-direction:column; gap:10px}
+.card-body h3{margin:0; font-size:18px}
+.card-body p{margin:0; color:var(--muted)}
+.meta{display:flex; gap:12px; flex-wrap:wrap; list-style:none; padding:0; margin:4px 0 6px}
+.meta li{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); padding:6px 8px; border:1px solid rgba(255,255,255,0.06); border-radius:999px}
+.meta svg{width:14px; height:14px; opacity:0.9}
+.card-actions{margin-top:auto; display:flex; gap:10px}
+
+.btn{display:inline-flex; align-items:center; gap:8px; border:none; color:#0b1020; background:#e5e7eb; padding:10px 14px; border-radius:10px; cursor:pointer; transition:transform .05s ease, box-shadow .2s}
+.btn svg{width:16px; height:16px; color:#0b1020}
+.btn:hover{box-shadow:0 10px 20px rgba(0,0,0,0.25)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background: linear-gradient(90deg, var(--brand-1), var(--brand-2)); color:white}
+.btn[disabled]{opacity:.5; cursor:not-allowed}
+
+.view{display:none}
+.view.current{display:block}
+
+/* Hide header brand and footer when playing, keep XP box visible */
+body.playing .brand{visibility:hidden}
+body.playing .site-footer{display:none}
+/* While playing: collapse header to floating XP box only */
+body.playing .site-header{
+  position: fixed;
+  top: 16px; right: 16px; left: auto;
+  width: auto; padding: 0;
+  background: none; border: none; backdrop-filter: none; box-shadow: none;
+  z-index: 40;
+}
+body.playing .site-header .brand{display:none}
+body.playing .site-header .xp-box{
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border:1px solid rgba(255,255,255,0.12);
+  box-shadow: var(--shadow);
+}
+/* Slight glow for XP icon */
+.xp-icon{filter: drop-shadow(0 0 6px rgba(251,191,36,0.35))}
+
+.site-footer{max-width:1100px; margin:32px auto 24px; color:var(--muted); display:flex; justify-content:center; gap:10px}
+.sep{opacity:.4}
+
+/* Game View */
+#view-game{display:flex; flex-direction:column; gap:14px}
+.game-topbar{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.icon-btn{display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; border:1px solid rgba(255,255,255,0.1); background:var(--card); color:var(--text); cursor:pointer}
+.icon-btn svg{width:18px; height:18px}
+.icon-btn.hidden{display:none}
+.game-title{display:flex; align-items:center; gap:10px}
+.title-icon{width:22px; height:22px; color:var(--accent)}
+
+.game-root{position:relative; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:14px; box-shadow:var(--shadow)}
+
+.game-hud{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px}
+.badge{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.06); font-size:13px}
+.badge svg{width:14px; height:14px}
+
+.canvas-wrap{position:relative; width:100%; aspect-ratio: 4 / 3; background: radial-gradient(700px 400px at -10% -10%, rgba(34,211,238,.12), transparent 60%), radial-gradient(600px 300px at 120% 10%, rgba(167,139,250,.12), transparent 60%), linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); border:1px solid rgba(255,255,255,0.08); border-radius:12px; overflow:hidden}
+.canvas-wrap canvas{display:block; width:100%; height:100%}
+
+.status-overlay{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; background:rgba(11,16,32,0.55); backdrop-filter: blur(6px); color:var(--text);}
+.status-card{min-width:260px; background:var(--card); border:1px solid rgba(255,255,255,0.08); padding:16px; border-radius:12px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:10px}
+.status-card h3{margin:0}
+.status-card p{margin:0; color:var(--muted)}
+
+/* Win/Lose themed overlays with glow and stronger blur */
+.status-overlay.lose{background:radial-gradient(40% 40% at 50% 40%, rgba(239,68,68,0.20), rgba(11,16,32,0.55) 60%); backdrop-filter: blur(10px) saturate(1.05)}
+.status-overlay.lose .status-card{border-color: rgba(239,68,68,0.35); box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 24px rgba(239,68,68,0.45), 0 0 60px rgba(239,68,68,0.25); background: linear-gradient(180deg, rgba(239,68,68,0.10), rgba(255,255,255,0.04)); animation: glowPulse 1.8s ease-in-out infinite alternate}
+.status-overlay.lose .status-card h3{color:#fecaca}
+
+.status-overlay.win{background:radial-gradient(40% 40% at 50% 40%, rgba(34,197,94,0.18), rgba(11,16,32,0.55) 60%); backdrop-filter: blur(10px) saturate(1.05)}
+.status-overlay.win .status-card{border-color: rgba(34,197,94,0.35); box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 24px rgba(34,197,94,0.45), 0 0 60px rgba(34,197,94,0.25); background: linear-gradient(180deg, rgba(34,197,94,0.10), rgba(255,255,255,0.04)); animation: glowPulse 1.8s ease-in-out infinite alternate}
+.status-overlay.win .status-card h3{color:#bbf7d0}
+
+@keyframes glowPulse{from{transform:translateY(0); box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 16px rgba(255,255,255,0.08), 0 0 40px rgba(255,255,255,0.06)} to{transform:translateY(-1px); box-shadow: 0 14px 34px rgba(0,0,0,0.38), 0 0 34px rgba(255,255,255,0.12), 0 0 80px rgba(255,255,255,0.08)}}
+
+.xp-toast{position:fixed; right:18px; bottom:18px; display:none; padding:10px 12px; border-radius:10px; background:rgba(0,0,0,0.6); color:#fff; border:1px solid rgba(255,255,255,0.12); box-shadow:var(--shadow); font-weight:700}
+.xp-toast.show{display:block; animation:toast-pop .2s ease}
+@keyframes toast-pop{from{transform:translateY(6px); opacity:0} to{transform:translateY(0); opacity:1}}
+
+/* Coming soon modal overlay (reuses status-card visuals) */
+.modal-overlay{position:fixed; inset:0; background:rgba(11,16,32,0.55); backdrop-filter: blur(6px); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50}
+
+/* Cheese Catcher */
+.catch-root{display:flex; flex-direction:column; gap:12px}
+.catch-area{position:relative; width:100%; aspect-ratio: 16 / 9; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:12px; overflow:hidden}
+.cheese{position:absolute; width:56px; height:56px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg, #f59e0b, #f97316); color:#0b1020; box-shadow:var(--shadow); cursor:pointer; border:1px solid rgba(255,255,255,0.1)}
+.cheese svg{width:28px; height:28px; color:#0b1020}
+.progress{width:100%; height:8px; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden}
+.progress span{display:block; height:100%; background:linear-gradient(90deg, #22c55e, #22d3ee); width:100%}
+
+/* Mode select minimal styling */
+.mode-select{background:rgba(255,255,255,0.1); color:var(--text); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:4px 8px; font-size:13px}
+
+/* Promote GPU composition for moving cheese to avoid flicker */
+.cheese{will-change: transform}
+
+@media (max-width: 900px){
+  .card{grid-column: span 12}
+  .xp-progress{width:120px}
+}
