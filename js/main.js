@@ -393,6 +393,18 @@ function MouseSnakeGame(root) {
   // State
   const cols = 32, rows = 24;
   const cellW = canvas.width / cols, cellH = canvas.height / rows;
+  // Pre-render grid once for this game
+  let gridCache = document.createElement('canvas');
+  gridCache.width = canvas.width; gridCache.height = canvas.height;
+  (function buildGrid(){
+    const g = gridCache.getContext('2d');
+    g.save(); g.globalAlpha = 0.06; g.strokeStyle = '#ffffff'; g.lineWidth = 1;
+    for (let x = 0; x <= cols; x++) { g.beginPath(); g.moveTo(x*cellW+0.5, 0); g.lineTo(x*cellW+0.5, canvas.height); g.stroke(); }
+    for (let y = 0; y <= rows; y++) { g.beginPath(); g.moveTo(0, y*cellH+0.5); g.lineTo(canvas.width, y*cellH+0.5); g.stroke(); }
+    g.restore();
+  })();
+  // Pre-render static grid texture (offscreen) for this game (no redeclare)
+  // already created gridCache above
 
   // Draw grid once
   (function drawGrid() {
@@ -414,6 +426,12 @@ function MouseSnakeGame(root) {
       gridCtx.stroke();
     }
     gridCtx.restore();
+    // red border around playfield
+    gridCtx.save();
+    gridCtx.strokeStyle = '#ef4444';
+    gridCtx.lineWidth = 4;
+    gridCtx.strokeRect(2, 2, gridCanvas.width - 4, gridCanvas.height - 4);
+    gridCtx.restore();
   })();
 
   let snake = [];
@@ -421,6 +439,11 @@ function MouseSnakeGame(root) {
   let dir = { x: 1, y: 0 };
   const dirQueue = [];
   let cheese = null;
+  // Potions state
+  let potions = []; // { x, y, type: 'green'|'blue', ttl }
+  let potionSpawnTimer = 0;
+  let speedBoostTimer = 0; // seconds left for blue potion boost
+  const SPEED_BOOST_AMOUNT = 3.0;
   let score = 0;
   let alive = true;
   let paused = false;
@@ -449,6 +472,10 @@ function MouseSnakeGame(root) {
     alive = true;
     paused = false;
     speed = turbo ? 9 : 6;
+    // reset potions
+    potions = [];
+    potionSpawnTimer = randInt(4, 8);
+    speedBoostTimer = 0;
     placeCheese();
     updateHUD();
     hideOverlay();
@@ -457,7 +484,8 @@ function MouseSnakeGame(root) {
 
   function updateHUD() {
     hud.querySelector('#sn-score').textContent = String(score);
-    hud.querySelector('#sn-speed').textContent = String(speed.toFixed(1));
+    const eff = speed + (speedBoostTimer > 0 ? SPEED_BOOST_AMOUNT : 0);
+    hud.querySelector('#sn-speed').textContent = String(eff.toFixed(1));
     hud.querySelector('#sn-best').textContent = String(best);
   }
 
@@ -538,6 +566,23 @@ function MouseSnakeGame(root) {
     } else {
       snake.pop();
     }
+    // potion pickup
+    for (let i = 0; i < potions.length; i++) {
+      const p = potions[i];
+      if (p && p.x === nx && p.y === ny) {
+        if (p.type === 'green') {
+          // grow by 1: duplicate last segment
+          const tail = snake[snake.length - 1];
+          if (tail) snake.push({ x: tail.x, y: tail.y });
+          Sound.click();
+        } else if (p.type === 'blue') {
+          speedBoostTimer = Math.max(speedBoostTimer, 5); // seconds
+          Sound.click();
+        }
+        potions.splice(i, 1);
+        break;
+      }
+    }
     updateHUD();
   }
 
@@ -545,6 +590,23 @@ function MouseSnakeGame(root) {
     // clear and draw static grid from offscreen buffer
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(gridCanvas, 0, 0);
+
+    // potions
+    for (const p of potions) {
+      const cx = p.x * cellW;
+      const cy = p.y * cellH;
+      const pad = 6;
+      const w = cellW - pad * 2, h = cellH - pad * 2;
+      const color = p.type === 'green' ? '#22c55e' : '#3b82f6';
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.95;
+      roundRect(ctx, cx + pad, cy + pad, w, h, 8);
+      ctx.fill();
+      ctx.restore();
+    }
 
     // cheese
     if (cheese) {
@@ -575,7 +637,8 @@ function MouseSnakeGame(root) {
     }
 
     // snake with interpolation
-    const stepDur = 1 / speed;
+    const effSpeed = speed + (speedBoostTimer > 0 ? SPEED_BOOST_AMOUNT : 0);
+    const stepDur = 1 / effSpeed;
     const t = clamp(acc / stepDur, 0, 1);
     for (let i = 0; i < snake.length; i++) {
       const cur = snake[i];
@@ -914,6 +977,8 @@ function HideFromCatGame(root) {
   wrap.appendChild(canvas);
   root.append(hud, wrap);
 
+  // Pre-render static grid background + red border (declared after cols/rows)
+
   // Overlay
   const overlay = document.createElement('div');
   overlay.className = 'status-overlay'; overlay.style.display = 'none';
@@ -933,6 +998,28 @@ function HideFromCatGame(root) {
 
   // Simple maze generation (randomized obstacles)
   const grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+  // Now build the background grid cache
+  const gridCache = document.createElement('canvas');
+  gridCache.width = canvas.width;
+  gridCache.height = canvas.height;
+  (function buildHCGrid(){
+    const g = gridCache.getContext('2d');
+    const cw = canvas.width, ch = canvas.height;
+    g.clearRect(0, 0, cw, ch);
+    g.save();
+    g.globalAlpha = 0.08;
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1;
+    for (let x = 0; x <= cols; x++) { g.beginPath(); g.moveTo(x * cellW + 0.5, 0); g.lineTo(x * cellW + 0.5, ch); g.stroke(); }
+    for (let y = 0; y <= rows; y++) { g.beginPath(); g.moveTo(0, y * cellH + 0.5); g.lineTo(cw, y * cellH + 0.5); g.stroke(); }
+    g.restore();
+    // red border outline
+    g.save();
+    g.strokeStyle = '#ef4444';
+    g.lineWidth = 4;
+    g.strokeRect(2, 2, cw - 4, ch - 4);
+    g.restore();
+  })();
   function genMaze(density) {
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
@@ -983,6 +1070,27 @@ function HideFromCatGame(root) {
       `<circle cx=\"9\" cy=\"13\" r=\"1\" fill=\"#0b1020\"/><circle cx=\"15\" cy=\"13\" r=\"1\" fill=\"#0b1020\"/>`+
       `</svg>`;
     catImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  })();
+
+  // Visual: Mouse image (SVG stylized)
+  const mouseImg = new Image();
+  (function loadMouseImage(){
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>\n`+
+      `<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">`+
+      `<defs>`+
+      `<linearGradient id=\"mg\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">`+
+      `<stop offset=\"0%\" stop-color=\"#e5e7eb\"/><stop offset=\"100%\" stop-color=\"#cbd5e1\"/>`+
+      `</linearGradient>`+
+      `</defs>`+
+      `<ellipse cx=\"12\" cy=\"14\" rx=\"7\" ry=\"6\" fill=\"url(#mg)\"/>`+
+      `<ellipse cx=\"8\" cy=\"8\" rx=\"3.5\" ry=\"3\" fill=\"#f5d0fe\" opacity=\"0.9\"/>`+
+      `<ellipse cx=\"16\" cy=\"8\" rx=\"3.5\" ry=\"3\" fill=\"#f5d0fe\" opacity=\"0.9\"/>`+
+      `<circle cx=\"12\" cy=\"13.5\" r=\"1.2\" fill=\"#0b1020\"/>`+
+      `<circle cx=\"10.2\" cy=\"12.5\" r=\"0.6\" fill=\"#0b1020\"/>`+
+      `<circle cx=\"13.8\" cy=\"12.5\" r=\"0.6\" fill=\"#0b1020\"/>`+
+      `<path d=\"M12 19c2.5 0 5 .5 6.5 1.4\" stroke=\"#a78bfa\" stroke-width=\"0.7\" fill=\"none\" stroke-linecap=\"round\"/>`+
+      `</svg>`;
+    mouseImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   })();
 
   // Controls (hold-to-move)
@@ -1188,13 +1296,14 @@ function HideFromCatGame(root) {
   function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     // background grid-like
-    ctx.drawImage(createGridCache(), 0, 0);
+    ctx.drawImage(gridCache, 0, 0);
     // walls
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) if (grid[y][x] === 1) {
         const px = x * cellW + 2, py = y * cellH + 2;
         const w = cellW - 4, h = cellH - 4;
+        const isBorder = x === 0 || y === 0 || x === cols - 1 || y === rows - 1;
+        ctx.fillStyle = isBorder ? 'rgba(239,68,68,0.28)' : 'rgba(255,255,255,0.08)';
         roundRect(ctx, px, py, w, h, 6);
         ctx.fill();
       }
@@ -1207,13 +1316,17 @@ function HideFromCatGame(root) {
     const cfx = ((catAnim.active ? catAnim.fromX + (catAnim.toX - catAnim.fromX) * ct : cat.x)) * cellW;
     const cfy = ((catAnim.active ? catAnim.fromY + (catAnim.toY - catAnim.fromY) * ct : cat.y)) * cellH;
 
-    // player
+    // player as image
     (function(){
-      const pad = 4; const w = cellW - pad*2; const h = cellH - pad*2;
-      const grd = ctx.createLinearGradient(pfx, pfy, pfx + w, pfy + h);
-      grd.addColorStop(0, '#22d3ee'); grd.addColorStop(1, '#a78bfa');
-      ctx.fillStyle = grd; ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
-      roundRect(ctx, pfx + pad, pfy + pad, w, h, 6); ctx.fill(); ctx.stroke();
+      const pad = 2; const w = cellW - pad*2; const h = cellH - pad*2;
+      if (mouseImg.complete && mouseImg.naturalWidth > 0) {
+        ctx.drawImage(mouseImg, pfx + pad, pfy + pad, w, h);
+      } else {
+        const grd = ctx.createLinearGradient(pfx, pfy, pfx + w, pfy + h);
+        grd.addColorStop(0, '#e5e7eb'); grd.addColorStop(1, '#cbd5e1');
+        ctx.fillStyle = grd; ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+        roundRect(ctx, pfx + pad, pfy + pad, w, h, 10); ctx.fill(); ctx.stroke();
+      }
     })();
 
     // cat as image
@@ -1235,18 +1348,7 @@ function HideFromCatGame(root) {
     ctx.fill(); ctx.stroke();
   }
 
-  let gridCache = null;
-  function createGridCache() {
-    if (gridCache) return gridCache;
-    gridCache = document.createElement('canvas');
-    gridCache.width = canvas.width; gridCache.height = canvas.height;
-    const g = gridCache.getContext('2d');
-    g.save(); g.globalAlpha = 0.06; g.strokeStyle = '#ffffff'; g.lineWidth = 1;
-    for (let x = 0; x <= cols; x++) { g.beginPath(); g.moveTo(x*cellW+0.5, 0); g.lineTo(x*cellW+0.5, canvas.height); g.stroke(); }
-    for (let y = 0; y <= rows; y++) { g.beginPath(); g.moveTo(0, y*cellH+0.5); g.lineTo(canvas.width, y*cellH+0.5); g.stroke(); }
-    g.restore();
-    return gridCache;
-  }
+  // removed createGridCache (now prerendered once)
 
   function showOverlay(title, sub, kind) {
     overlay.style.display = 'flex';
